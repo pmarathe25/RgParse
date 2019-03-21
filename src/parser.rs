@@ -139,6 +139,11 @@ impl Parser {
     }
 
     pub fn parse_args(&self) -> Args {
+        fn fail(parser: &Parser) -> ! {
+            parser.help();
+            std::process::exit(1);
+        }
+
         let mut args = Args::new();
         // Skip over the executable name.
         let mut args_iter = env::args().into_iter().skip(1);
@@ -152,9 +157,11 @@ impl Parser {
             if let Some(info) = self.parameters.get(&full_arg) {
                 // If the argument was found, we will add it to the Args struct.
                 if info.takes_value {
-                    let value = args_iter.next()
-                        .expect(&format!("Invalid value after parameter: {}", arg));
-                    args.arguments.insert(full_arg, value);
+                    match args_iter.next() {
+                        // If the value for this argument is invalid, print help message and exit.
+                        Some(value) => args.arguments.insert(full_arg, value),
+                        None => fail(&self),
+                    };
                 } else {
                     args.flags.insert(full_arg);
                 }

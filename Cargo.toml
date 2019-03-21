@@ -6,6 +6,6 @@ edition = "2018"
 
 [[bin]]
 name = "example"
-path = "src/bin.rs"
+path = "examples/basic.rs"
 
 [dependencies]
