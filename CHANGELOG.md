@@ -1,6 +1,10 @@
 # RgParse - A Rust Command-line Argument Parser
 **NOTE**: Dates are in dd-mm-yyyy format.
 
+## v0.1.1 (20-03-2019)
+- Adds a basic example to the README.
+- Restructures parser.rs - now split into `parameter.rs`, `args.rs`, and `parser.rs`.
+
 ## v0.1.0 (20-03-2019)
 - Adds the Parser struct which holds arguments and descriptions
 - Abandons support for `--argument=value` syntax. Only `--argument value` syntax is supported now. This greatly simplifies things.

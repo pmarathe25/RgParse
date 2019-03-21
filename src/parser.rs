@@ -1,7 +1,8 @@
-use std::fmt::Debug;
-use std::str::FromStr;
-use std::collections::{HashMap, HashSet};
 use std::env;
+use std::collections::HashMap;
+
+use super::parameter::Parameter;
+use super::args::Args;
 
 #[cfg(test)]
 mod tests {
@@ -27,64 +28,7 @@ mod tests {
     }
 }
 
-// TODO: Move Args/Parameter into separate files.
-// The arguments returned by parse.
-#[derive(Debug)]
-pub struct Args {
-    pub positional: Vec<String>,
-    // Maps parameter names to values.
-    arguments: HashMap<String, String>,
-    flags: HashSet<String>,
-}
-
-impl Args {
-    fn new() -> Args {
-        return Args{positional: Vec::new(), arguments: HashMap::new(), flags: HashSet::new()};
-    }
-
-    pub fn flag(&self, flag: &str) -> bool {
-        return self.flags.contains(flag);
-    }
-
-    pub fn get<T>(&self, param: &str) -> Option<T> where T: FromStr, <T as FromStr>::Err: Debug {
-        match self.arguments.get(param) {
-            Some(value) => {
-                return Some(value.parse::<T>().expect(
-                    &format!("Could not covert value ({}) for parameter {}", value, param)
-                ));
-            },
-            None => return None,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Parameter {
-    name: String,
-    takes_value: bool,
-    description: String,
-    alias: Option<String>,
-}
-
-impl Parameter {
-    // TODO: Docstrings here
-    /// An parameter that takes a value.
-    /// Parameters do not have to start with - or --. This is up to the discretion of the user of this library..
-    pub fn param(name: &str, description: &str) -> Parameter {
-        return Parameter{name: String::from(name), takes_value: true, description: String::from(description), alias: None};
-    }
-
-    pub fn flag(name: &str, description: &str) -> Parameter {
-        return Parameter{name: String::from(name), takes_value: false, description: String::from(description), alias: None};
-    }
-
-    pub fn alias(mut self, alias: &str) -> Parameter {
-        self.alias = Some(String::from(alias));
-        return self;
-    }
-}
-
-// Internal information about the parameter.
+// Internal information about parameters.
 #[derive(Debug)]
 struct ParamInfo {
     takes_value: bool,
