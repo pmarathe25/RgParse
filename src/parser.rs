@@ -1,10 +1,11 @@
+use std::fmt::Debug;
 use std::str::FromStr;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 
 #[cfg(test)]
 mod tests {
-    use super::Parser;
+    use super::{Parser, Parameter};
 
     #[test]
     fn can_create_parser() {
@@ -14,121 +15,159 @@ mod tests {
     #[test]
     fn can_help() {
         let mut parser = Parser::new("Test Parser 0");
-        parser.add_argument_short("-t", "--test", "A test argument");
+        parser.add_parameter(Parameter::param("--test", "A test parameter").alias("-t"));
         parser.help();
     }
 
     #[test]
     fn can_parse() {
         let mut parser = Parser::new("Test Parser 0");
-        parser.add_argument_short("-t", "--test", "A test argument");
+        parser.add_parameter(Parameter::param("--test", "A test parameter").alias("-t"));
         println!("{:?}", parser.parse_args());
     }
 }
 
+// TODO: Move Args/Parameter into separate files.
 // The arguments returned by parse.
 #[derive(Debug)]
 pub struct Args {
     pub positional: Vec<String>,
+    // Maps parameter names to values.
     arguments: HashMap<String, String>,
+    flags: HashSet<String>,
 }
 
 impl Args {
-    fn new(positional: Vec<String>, arguments: HashMap<String, String>) -> Args {
-        return Args{positional: positional, arguments: arguments};
+    fn new() -> Args {
+        return Args{positional: Vec::new(), arguments: HashMap::new(), flags: HashSet::new()};
     }
 
-    pub fn get<T>(&self, arg: &str) -> Option<T> where T: FromStr {
-        match self.arguments.get(arg) {
+    pub fn flag(&self, flag: &str) -> bool {
+        return self.flags.contains(flag);
+    }
+
+    pub fn get<T>(&self, param: &str) -> Option<T> where T: FromStr, <T as FromStr>::Err: Debug {
+        match self.arguments.get(param) {
             Some(value) => {
-                match value.parse::<T>() {
-                    Ok(parsed) => return Some(parsed),
-                    Err(_) => return None,
-                }
+                return Some(value.parse::<T>().expect(
+                    &format!("Could not covert value ({}) for parameter {}", value, param)
+                ));
             },
             None => return None,
         }
     }
 }
 
+#[derive(Debug)]
+pub struct Parameter {
+    name: String,
+    takes_value: bool,
+    description: String,
+    alias: Option<String>,
+}
+
+impl Parameter {
+    // TODO: Docstrings here
+    /// An parameter that takes a value.
+    /// Parameters do not have to start with - or --. This is up to the discretion of the user of this library..
+    pub fn param(name: &str, description: &str) -> Parameter {
+        return Parameter{name: String::from(name), takes_value: true, description: String::from(description), alias: None};
+    }
+
+    pub fn flag(name: &str, description: &str) -> Parameter {
+        return Parameter{name: String::from(name), takes_value: false, description: String::from(description), alias: None};
+    }
+
+    pub fn alias(mut self, alias: &str) -> Parameter {
+        self.alias = Some(String::from(alias));
+        return self;
+    }
+}
+
+// Internal information about the parameter.
+#[derive(Debug)]
+struct ParamInfo {
+    takes_value: bool,
+    description: String,
+}
+
+impl ParamInfo {
+    pub fn new(takes_value: bool, description: String) -> ParamInfo {
+        return ParamInfo{takes_value: takes_value, description: description};
+    }
+}
+
+#[derive(Debug)]
 pub struct Parser {
     // Description of the parser.
     description: String,
-    // Maps long argument names to their descriptions.
-    long_args: HashMap<String, String>,
-    // Maps short argument aliases to their long arguments.
-    short_args: HashMap<String, String>,
+    // Maps long parameter names to their descriptions.
+    parameters: HashMap<String, ParamInfo>,
+    // Maps parameter aliases to their parameter names.
+    aliases: HashMap<String, String>,
 }
 
 impl Parser {
     pub fn new(description: &str) -> Parser {
-        return Parser{description: String::from(description), long_args: HashMap::new(), short_args: HashMap::new()};
+        return Parser{description: String::from(description), parameters: HashMap::new(), aliases: HashMap::new()};
     }
 
-    pub fn add_argument_short(&mut self, short: &str, long: &str, description: &str) {
-        self.add_argument(long, description);
-        self.short_args.insert(String::from(short), String::from(long));
-    }
-
-    pub fn add_argument(&mut self, long: &str, description: &str) {
-        self.long_args.insert(String::from(long), String::from(description));
+    pub fn add_parameter(&mut self, param: Parameter) {
+        if let Some(alias) = param.alias {
+            self.aliases.insert(alias, param.name.clone());
+        }
+        self.parameters.insert(param.name, ParamInfo::new(param.takes_value, param.description));
     }
 
     pub fn help(&self) {
-        // TODO: Print arguments in usage message.
+        // TODO: Print parameters in usage message.
         println!("{}\nUsage: {}", self.description, env::current_exe().unwrap().to_str().unwrap());
-        // Create an inverse mapping of long argument names to short ones.
-        let mut long_arg_aliases = HashMap::new();
-        for (key, value) in &self.short_args {
-            long_arg_aliases.insert(value, key);
+        // Create an inverse mapping of long parameter names to short ones.
+        let mut parameter_aliases = HashMap::new();
+        for (key, value) in &self.aliases {
+            parameter_aliases.insert(value, key);
         }
-        // Display help messages for each argument.
-        for (long_arg, description) in &self.long_args {
+        // Display help messages for each parameter.
+        for (param, info) in &self.parameters {
             let mut print_arg = String::from("\t");
-            if let Some(short) = long_arg_aliases.get(long_arg) {
+            if let Some(short) = parameter_aliases.get(param) {
                 print_arg += &format!("{}, ", short);
             }
-            print_arg += long_arg;
-            println!("{}\t{}", print_arg, description);
+            print_arg += param;
+            println!("{}\t{}", print_arg, info.description);
         }
     }
 
     pub fn parse_args(&self) -> Args {
-        let mut positional = Vec::new();
-        let mut arguments = HashMap::new();
+        let mut args = Args::new();
         // Skip over the executable name.
         let mut args_iter = env::args().into_iter().skip(1);
         while let Some(arg) = args_iter.next() {
-            if arg.starts_with("-") {
-                let mut arg_name = arg.clone();
-                let mut value;
-                // Support both --arg=value and --arg value
-                if arg.contains("=") {
-                    let mut split = arg.splitn(2, "=");
-                    arg_name = String::from(split.next()
-                        .expect(&format!("Invalid argument: {}", arg))
-                    );
-                    value = String::from(split.next()
-                        .expect(&format!("Invalid value to argument: {}", arg))
-                    );
+            // First check if this parameter is an alias. If so, get the full parameter name.
+            let mut full_arg = arg.clone();
+            if let Some(full_name) = self.aliases.get(&arg) {
+                full_arg = full_name.clone();
+            }
+
+            if let Some(info) = self.parameters.get(&full_arg) {
+                // If the argument was found, we will add it to the Args struct.
+                if info.takes_value {
+                    let value = args_iter.next()
+                        .expect(&format!("Invalid value after parameter: {}", arg));
+                    args.arguments.insert(full_arg, value);
                 } else {
-                    value = args_iter.next()
-                        .expect(&format!("Invalid value after argument: {}", arg));
+                    args.flags.insert(full_arg);
                 }
-                // Convert short argument names to long ones.
-                if let Some(long_arg) = self.short_args.get(&arg_name) {
-                    arg_name = long_arg.clone();
-                }
-                if !self.long_args.contains_key(&arg_name) {
-                    println!("Error: Unrecognized argument: {}", arg_name);
-                    self.help();
-                    std::process::exit(1);
-                }
-                arguments.insert(arg_name, value);
+            } else if arg == "-h" || arg == "--help" {
+                // If -h/--help has not been overriden in the parser (i.e. was not found in the
+                // if condition.), then we print and exit here.
+                self.help();
+                std::process::exit(0);
             } else {
-                positional.push(arg);
+                // Otherwise we have to assume that this is a positional argument.
+                args.positional.push(arg);
             }
         }
-        return Args::new(positional, arguments);
+        return args;
     }
 }
