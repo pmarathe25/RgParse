@@ -1,7 +1,7 @@
 # RgParse - A Rust Command-line Argument Parser
 **NOTE**: Dates are in dd-mm-yyyy format.
 
-## vNext
+## v0.1.2 (26-03-2019)
 - Adds support for default values for parameters with the `default` function.
 - Adds parameter names to `Usage` section in help message.
 - Adds checks in `parse_args` to ensure that all required arguments have been supplied.
